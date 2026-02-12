@@ -1,6 +1,6 @@
 FROM python:3.11-slim
 
-# 1. Install System Dependencies (Added 'git' here)
+# 1. System Dependencies Install karo (Git zaroori hai)
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     build-essential \
@@ -11,15 +11,13 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# 2. Install Python Requirements
+# 2. Requirements copy aur install karo
 COPY requirements.txt /app/
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 3. Copy Bot Code
-# (Agar aapka folder structure waisa hi hai jaisa pehle tha)
+# 3. Bot ka poora code copy karo
 COPY axl_music_bot /app/axl_music_bot
 
+# 4. Environment Variables aur Start Command
 ENV PYTHONUNBUFFERED=1
-
-# 4. Start Command
 CMD ["python", "-m", "axl_music_bot.main"]
