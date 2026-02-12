@@ -7,10 +7,22 @@ from typing import Dict, List
 
 from pyrogram import Client, filters
 from pyrogram.types import Message
-from pytgcalls import PyTgCalls
-from pytgcalls.types.input_stream import AudioPiped
 import yt_dlp
 from PIL import Image, ImageDraw, ImageFont
+
+# Try to import pytgcalls - optional for voice chat features
+try:
+    from pytgcalls import PyTgCalls
+    try:
+        from pytgcalls.types import AudioPiped
+    except ImportError:
+        from pytgcalls.types.input_stream import AudioPiped
+    VOICE_CHAT_ENABLED = True
+except ImportError as e:
+    print(f"Note: pytgcalls not available - voice chat disabled: {e}")
+    PyTgCalls = None
+    AudioPiped = None
+    VOICE_CHAT_ENABLED = False
 
 from .config import API_ID, API_HASH, BOT_TOKEN, PREFIX, DEFAULT_VOLUME
 
@@ -33,8 +45,7 @@ def make_client():
 
 
 app = make_client()
-pytg = PyTgCalls(app)
-
+pytg = PyTgCalls(app) if VOICE_CHAT_ENABLED else None
 
 def download_audio(query: str):
     ydl_opts = {
@@ -112,13 +123,18 @@ async def ensure_player(chat_id: int):
 
 async def player_loop(chat_id: int):
     try:
+        if not VOICE_CHAT_ENABLED:
+            print("Voice chat not available - skipping playback")
+            QUEUE.pop(chat_id, None)
+            return
         while QUEUE.get(chat_id):
             item = QUEUE[chat_id][0]
             path = item["path"]
             try:
                 await pytg.join_group_call(chat_id, AudioPiped(path))
-            except Exception:
+            except Exception as e:
                 # join failed, notify and break
+                print(f"Failed to join call: {e}")
                 break
             duration = max(5, item.get("duration", 5))
             await asyncio.sleep(duration)
@@ -131,11 +147,13 @@ async def player_loop(chat_id: int):
             else:
                 QUEUE[chat_id].pop(0)
         try:
-            await pytg.leave_group_call(chat_id)
+            if VOICE_CHAT_ENABLED and pytg:
+                await pytg.leave_group_call(chat_id)
         except Exception:
             pass
         QUEUE.pop(chat_id, None)
-    except Exception:
+    except Exception as e:
+        print(f"Player loop error: {e}")
         QUEUE.pop(chat_id, None)
 
 
@@ -190,10 +208,11 @@ async def cmd_skip(_, message: Message):
 async def cmd_stop(_, message: Message):
     chat_id = message.chat.id
     QUEUE.pop(chat_id, None)
-    try:
-        await pytg.leave_group_call(chat_id)
-    except Exception:
-        pass
+    if VOICE_CHAT_ENABLED and pytg:
+        try:
+            await pytg.leave_group_call(chat_id)
+        except Exception:
+            pass
     await message.reply_text("Stopped and cleared queue.")
 
 
@@ -240,8 +259,11 @@ async def cmd_ping(_, message: Message):
 
 async def main():
     await app.start()
-    await pytg.start()
+    if VOICE_CHAT_ENABLED and pytg:
+        await pytg.start()
     print("AXL MUSIC BOT running")
+    if not VOICE_CHAT_ENABLED:
+        print("⚠️  Voice chat features disabled (pytgcalls not available)")
     await asyncio.Event().wait()
 
 
