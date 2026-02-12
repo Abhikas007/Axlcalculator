@@ -1,6 +1,4 @@
 pyrogram==2.0.106
-pytgcalls
 yt-dlp
-python-dotenv
 ffmpeg-python
 Pillow
