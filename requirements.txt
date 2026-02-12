@@ -1,8 +1,8 @@
 git+https://github.com/pyrogram/pyrogram.git
+git+https://github.com/pytgcalls/pytgcalls.git
 TgCrypto
 yt-dlp
 python-dotenv
 ffmpeg-python
 Pillow>=9.0.0
 aiohttp
-git+https://github.com/pytgcalls/pytgcalls.git
