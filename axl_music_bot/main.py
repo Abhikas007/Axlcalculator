@@ -1,7 +1,6 @@
 import asyncio
 import os
 import subprocess
-import uuid
 from typing import Dict, List
 
 from pyrogram import Client, filters
@@ -19,16 +18,21 @@ DEFAULT_VOLUME = int(os.getenv("DEFAULT_VOLUME", "100"))
 # --- PREFIX SETUP ---
 PREFIX = ["!", ".", "/"]
 
-# --- PYTGCALLS V3 SETUP ---
+# --- PYTGCALLS V2 SETUP (STABLE) ---
 try:
     from pytgcalls import PyTgCalls
-    from pytgcalls.types import MediaStream
+    from pytgcalls.types import AudioPiped  # V2 Import
     VOICE_CHAT_ENABLED = True
-except ImportError as e:
-    print(f"⚠️ Error: pytgcalls import failed: {e}")
-    PyTgCalls = None
-    MediaStream = None
-    VOICE_CHAT_ENABLED = False
+except ImportError:
+    try:
+        # Fallback for some v2 sub-versions
+        from pytgcalls.types.input_stream import AudioPiped
+        VOICE_CHAT_ENABLED = True
+    except ImportError as e:
+        print(f"⚠️ Error: pytgcalls import failed: {e}")
+        PyTgCalls = None
+        AudioPiped = None
+        VOICE_CHAT_ENABLED = False
 
 QUEUE: Dict[int, List[Dict]] = {}
 LOOP: Dict[int, str] = {}
@@ -45,11 +49,11 @@ def make_client():
 app = make_client()
 pytg = PyTgCalls(app) if VOICE_CHAT_ENABLED else None
 
-# ... (Download/Effects functions same as before) ...
 def download_audio(query: str):
     ydl_opts = {"format": "bestaudio/best", "outtmpl": "/tmp/axl_%(id)s.%(ext)s", "quiet": True, "noplaylist": True}
-    if not (query.startswith("http") or query.startswith("https")):
-        query = f"ytsearch1:{query}"
+    if os.path.exists("cookies.txt"): ydl_opts["cookiefile"] = "cookies.txt"
+    if not (query.startswith("http") or query.startswith("https")): query = f"ytsearch1:{query}"
+    
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(query, download=True)
         if "entries" in info: info = info["entries"][0]
@@ -62,25 +66,28 @@ async def player_loop(chat_id: int):
         while QUEUE.get(chat_id):
             item = QUEUE[chat_id][0]
             try:
-                stream = MediaStream(item["path"])
-                await pytg.play(chat_id, stream)
+                # --- V2 PLAY LOGIC (STABLE) ---
+                stream = AudioPiped(item["path"])
+                await pytg.join_group_call(chat_id, stream)
             except Exception as e:
                 print(f"❌ Play Error: {e}")
                 break
+            
             await asyncio.sleep(item.get("duration", 5))
+            
             if LOOP.get(chat_id) == "one": continue
             elif LOOP.get(chat_id) == "all": QUEUE[chat_id].append(QUEUE[chat_id].pop(0))
             else: QUEUE[chat_id].pop(0)
-        try: await pytg.leave_call(chat_id)
+        
+        try: await pytg.leave_group_call(chat_id)
         except: pass
         QUEUE.pop(chat_id, None)
     except Exception as e:
         print(f"Loop Error: {e}")
 
 async def ensure_player(chat_id: int):
-    if chat_id in QUEUE and QUEUE[chat_id]:
-        if len(QUEUE[chat_id]) == 1: 
-            asyncio.create_task(player_loop(chat_id))
+    if chat_id in QUEUE and QUEUE[chat_id] and len(QUEUE[chat_id]) == 1:
+        asyncio.create_task(player_loop(chat_id))
 
 @app.on_message(filters.command("play", PREFIX))
 async def cmd_play(_, message: Message):
@@ -101,7 +108,7 @@ async def cmd_play(_, message: Message):
 async def cmd_stop(_, message: Message):
     QUEUE.pop(message.chat.id, None)
     if VOICE_CHAT_ENABLED:
-        try: await pytg.leave_call(message.chat.id)
+        try: await pytg.leave_group_call(message.chat.id)
         except: pass
     await message.reply_text("⏹ **Stopped.**")
 
@@ -113,19 +120,14 @@ async def main():
     print("🔄 Starting Client...")
     await app.start()
     
-    # --- 🔥 YE HAI MAGIC FIX (CRASH HATANE KE LIYE) ---
-    print("🔄 Refreshing Dialogs (Fixing Peer ID errors)...")
+    # Peer ID Crash Fix
+    print("🔄 Refreshing Dialogs...")
     try:
-        # Ye line bot ko force karegi ki wo saare groups (Meme Group included) ko yaad kar le
-        async for dialog in app.get_dialogs(limit=50):
-            pass 
-        print("✅ Dialogs Refreshed!")
-    except Exception as e:
-        print(f"⚠️ Dialog fetch warning: {e}")
-    # ---------------------------------------------------
-
+        async for dialog in app.get_dialogs(limit=50): pass
+    except: pass
+    
     if VOICE_CHAT_ENABLED:
-        print("🔄 Starting PyTgCalls...")
+        print("🔄 Starting PyTgCalls V2...")
         await pytg.start()
         print("✅ PyTgCalls Started!")
     
