@@ -4,5 +4,5 @@ yt-dlp
 python-dotenv
 ffmpeg-python
 Pillow>=9.0.0
-pytgcalls==3.0.0.dev24
+git+https://github.com/pytgcalls/pytgcalls.git
 aiohttp
