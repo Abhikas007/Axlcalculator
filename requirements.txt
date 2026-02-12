@@ -5,4 +5,4 @@ python-dotenv
 ffmpeg-python
 Pillow>=9.0.0
 aiohttp
-git+https://github.com/pytgcalls/pytgcalls.git@v3.0.0.dev24
+py-tgcalls==2.2.11
