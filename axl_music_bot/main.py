@@ -18,21 +18,35 @@ DEFAULT_VOLUME = int(os.getenv("DEFAULT_VOLUME", "100"))
 # --- PREFIX SETUP ---
 PREFIX = ["!", ".", "/"]
 
-# --- PYTGCALLS V2 SETUP (STABLE) ---
+# --- UNIVERSAL PYTGCALLS SETUP (V2 & V3 SUPPORT) ---
+IS_V3 = False
 try:
     from pytgcalls import PyTgCalls
-    from pytgcalls.types import AudioPiped  # V2 Import
-    VOICE_CHAT_ENABLED = True
-except ImportError:
     try:
-        # Fallback for some v2 sub-versions
-        from pytgcalls.types.input_stream import AudioPiped
-        VOICE_CHAT_ENABLED = True
-    except ImportError as e:
-        print(f"⚠️ Error: pytgcalls import failed: {e}")
-        PyTgCalls = None
-        AudioPiped = None
-        VOICE_CHAT_ENABLED = False
+        # Koshish karo V3 (New) dhoondne ki
+        from pytgcalls.types import MediaStream
+        IS_V3 = True
+        print("✅ Detected PyTgCalls Version 3 (MediaStream)")
+    except ImportError:
+        # Agar nahi mila, toh V2 (Old) try karo
+        try:
+            from pytgcalls.types import AudioPiped
+            MediaStream = AudioPiped # Alias bana diya taaki code na phate
+            IS_V3 = False
+            print("✅ Detected PyTgCalls Version 2 (AudioPiped)")
+        except ImportError:
+            # Fallback for older V2 versions
+            from pytgcalls.types.input_stream import AudioPiped
+            MediaStream = AudioPiped
+            IS_V3 = False
+            print("✅ Detected PyTgCalls Version 2 (Input Stream)")
+            
+    VOICE_CHAT_ENABLED = True
+except ImportError as e:
+    print(f"⚠️ Error: pytgcalls import failed: {e}")
+    PyTgCalls = None
+    MediaStream = None
+    VOICE_CHAT_ENABLED = False
 
 QUEUE: Dict[int, List[Dict]] = {}
 LOOP: Dict[int, str] = {}
@@ -66,9 +80,15 @@ async def player_loop(chat_id: int):
         while QUEUE.get(chat_id):
             item = QUEUE[chat_id][0]
             try:
-                # --- V2 PLAY LOGIC (STABLE) ---
-                stream = AudioPiped(item["path"])
-                await pytg.join_group_call(chat_id, stream)
+                stream = MediaStream(item["path"])
+                
+                # --- AUTO DETECT PLAY METHOD ---
+                if IS_V3:
+                    await pytg.play(chat_id, stream) # V3 Style
+                else:
+                    await pytg.join_group_call(chat_id, stream) # V2 Style
+                # -------------------------------
+                
             except Exception as e:
                 print(f"❌ Play Error: {e}")
                 break
@@ -79,15 +99,18 @@ async def player_loop(chat_id: int):
             elif LOOP.get(chat_id) == "all": QUEUE[chat_id].append(QUEUE[chat_id].pop(0))
             else: QUEUE[chat_id].pop(0)
         
-        try: await pytg.leave_group_call(chat_id)
+        try: 
+            if IS_V3: await pytg.leave_call(chat_id)
+            else: await pytg.leave_group_call(chat_id)
         except: pass
         QUEUE.pop(chat_id, None)
     except Exception as e:
         print(f"Loop Error: {e}")
 
 async def ensure_player(chat_id: int):
-    if chat_id in QUEUE and QUEUE[chat_id] and len(QUEUE[chat_id]) == 1:
-        asyncio.create_task(player_loop(chat_id))
+    if chat_id in QUEUE and QUEUE[chat_id]:
+        if len(QUEUE[chat_id]) == 1:
+            asyncio.create_task(player_loop(chat_id))
 
 @app.on_message(filters.command("play", PREFIX))
 async def cmd_play(_, message: Message):
@@ -108,7 +131,9 @@ async def cmd_play(_, message: Message):
 async def cmd_stop(_, message: Message):
     QUEUE.pop(message.chat.id, None)
     if VOICE_CHAT_ENABLED:
-        try: await pytg.leave_group_call(message.chat.id)
+        try: 
+            if IS_V3: await pytg.leave_call(message.chat.id)
+            else: await pytg.leave_group_call(message.chat.id)
         except: pass
     await message.reply_text("⏹ **Stopped.**")
 
@@ -120,16 +145,17 @@ async def main():
     print("🔄 Starting Client...")
     await app.start()
     
-    # Peer ID Crash Fix
     print("🔄 Refreshing Dialogs...")
     try:
         async for dialog in app.get_dialogs(limit=50): pass
     except: pass
     
     if VOICE_CHAT_ENABLED:
-        print("🔄 Starting PyTgCalls V2...")
+        print("🔄 Starting PyTgCalls...")
         await pytg.start()
         print("✅ PyTgCalls Started!")
+    else:
+        print("❌ Voice Chat Disabled")
     
     print("🚀 AXL MUSIC BOT RUNNING...")
     await asyncio.Event().wait()
