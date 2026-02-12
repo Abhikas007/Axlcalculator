@@ -3,3 +3,6 @@ tgcrypto
 yt-dlp
 python-dotenv
 ffmpeg-python
+Pillow>=9.0.0
+pytgcalls>=4.0.0
+aiohttp
