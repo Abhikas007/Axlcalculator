@@ -10,18 +10,15 @@ from pyrogram.types import Message
 import yt_dlp
 from PIL import Image, ImageDraw, ImageFont
 
-# Try to import pytgcalls - optional for voice chat features
+# --- VOICE CHAT SETUP (Fixed for v3.0.0.dev24) ---
 try:
     from pytgcalls import PyTgCalls
-    try:
-        from pytgcalls.types import AudioPiped
-    except ImportError:
-        from pytgcalls.types.input_stream import AudioPiped
+    from pytgcalls.types import MediaStream  # Naya tarika
     VOICE_CHAT_ENABLED = True
 except ImportError as e:
     print(f"Note: pytgcalls not available - voice chat disabled: {e}")
     PyTgCalls = None
-    AudioPiped = None
+    MediaStream = None
     VOICE_CHAT_ENABLED = False
 
 from .config import API_ID, API_HASH, BOT_TOKEN, PREFIX, DEFAULT_VOLUME
@@ -53,6 +50,7 @@ def download_audio(query: str):
         "outtmpl": "/tmp/axl_%(id)s.%(ext)s",
         "quiet": True,
         "noplaylist": True,
+        "cookiefile": "cookies.txt"  # YouTube Fix: Cookies enabled
     }
     # If not a URL, use ytsearch
     if not (query.startswith("http://") or query.startswith("https://")):
@@ -131,7 +129,9 @@ async def player_loop(chat_id: int):
             item = QUEUE[chat_id][0]
             path = item["path"]
             try:
-                await pytg.join_group_call(chat_id, AudioPiped(path))
+                # FIX: Updated to v3 syntax (play instead of join_group_call)
+                stream = MediaStream(path)
+                await pytg.play(chat_id, stream)
             except Exception as e:
                 # join failed, notify and break
                 print(f"Failed to join call: {e}")
@@ -148,7 +148,8 @@ async def player_loop(chat_id: int):
                 QUEUE[chat_id].pop(0)
         try:
             if VOICE_CHAT_ENABLED and pytg:
-                await pytg.leave_group_call(chat_id)
+                # FIX: Updated to v3 syntax (leave_call)
+                await pytg.leave_call(chat_id)
         except Exception:
             pass
         QUEUE.pop(chat_id, None)
@@ -210,7 +211,7 @@ async def cmd_stop(_, message: Message):
     QUEUE.pop(chat_id, None)
     if VOICE_CHAT_ENABLED and pytg:
         try:
-            await pytg.leave_group_call(chat_id)
+            await pytg.leave_call(chat_id)
         except Exception:
             pass
     await message.reply_text("Stopped and cleared queue.")
