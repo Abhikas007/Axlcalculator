@@ -3,8 +3,25 @@ import os
 from pyrogram import Client, filters
 from pyrogram.types import Message
 import yt_dlp
-from pytgcalls import PyTgCalls
-from pytgcalls.types.input_stream import AudioPiped
+
+# --- ULTRA STABLE IMPORT BLOCK ---
+try:
+    from pytgcalls import PyTgCalls
+    try:
+        # Version 2 Style
+        from pytgcalls.types import AudioPiped as StreamType
+    except ImportError:
+        # Older Version 2 Style
+        from pytgcalls.types.input_stream import AudioPiped as StreamType
+    print("✅ Pytgcalls (V2) Loaded!")
+except ImportError:
+    try:
+        # Version 3 Style
+        from pytgcalls.types import MediaStream as StreamType
+        print("✅ Pytgcalls (V3) Loaded!")
+    except ImportError:
+        print("❌ All Pytgcalls imports failed!")
+        StreamType = None
 
 # ENV VARS
 API_ID = int(os.getenv("API_ID", "0"))
@@ -14,7 +31,7 @@ SESSION_STRING = os.getenv("SESSION_STRING", "")
 PREFIX = ["!", ".", "/"]
 
 app = Client("axl_music", api_id=API_ID, api_hash=API_HASH, session_string=SESSION_STRING) if SESSION_STRING else Client("axl_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
-pytg = PyTgCalls(app)
+pytg = PyTgCalls(app) if StreamType else None
 
 def download_audio(query: str):
     ydl_opts = {"format": "bestaudio/best", "outtmpl": "/tmp/axl_%(id)s.%(ext)s", "quiet": True, "noplaylist": True}
@@ -26,12 +43,17 @@ def download_audio(query: str):
 
 async def player(chat_id: int, path: str):
     try:
-        await pytg.join_group_call(chat_id, AudioPiped(path))
+        # Check if v2 or v3 play method is needed
+        if hasattr(pytg, 'join_group_call'):
+            await pytg.join_group_call(chat_id, StreamType(path))
+        else:
+            await pytg.play(chat_id, StreamType(path))
     except Exception as e:
         print(f"Play Error: {e}")
 
 @app.on_message(filters.command("play", PREFIX))
 async def cmd_play(_, message: Message):
+    if not StreamType: return await message.reply_text("❌ Library Error!")
     if len(message.command) < 2: return await message.reply_text("ℹ️ Usage: `!play Song Name`")
     m = await message.reply_text("🔎 **Searching...**")
     try:
@@ -42,11 +64,11 @@ async def cmd_play(_, message: Message):
 
 @app.on_message(filters.command("ping", PREFIX))
 async def cmd_ping(_, message: Message):
-    await message.reply_text("⚡️ **AXL MUSIC BOT is Alive (Final Baryon)!**")
+    await message.reply_text("⚡️ **AXL MUSIC BOT is Alive!**")
 
 async def main():
     await app.start()
-    await pytg.start()
+    if pytg: await pytg.start()
     print("🚀 AXL MUSIC BOT RUNNING!")
     await asyncio.Event().wait()
 
