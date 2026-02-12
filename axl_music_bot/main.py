@@ -5,14 +5,26 @@ from pyrogram import Client, filters
 from pyrogram.types import Message
 import yt_dlp
 
-# --- STRICT V2 SETUP ---
+# --- THE ULTIMATE IMPORT JUTSU ---
+VOICE_CHAT_ENABLED = False
+pytg = None
+StreamType = None
+
 try:
     from pytgcalls import PyTgCalls
-    from pytgcalls.types.input_stream import AudioPiped
+    # Pehle V2 Stable try karo
+    try:
+        from pytgcalls.types import AudioPiped as StreamType
+    except ImportError:
+        try:
+            from pytgcalls.types.input_stream import AudioPiped as StreamType
+        except ImportError:
+            # Agar V2 nahi mila, toh V3 MediaStream try karo
+            from pytgcalls.types import MediaStream as StreamType
     VOICE_CHAT_ENABLED = True
+    print("✅ Pytgcalls Imported Successfully!")
 except ImportError as e:
-    print(f"⚠️ Error: pytgcalls V2 import failed: {e}")
-    VOICE_CHAT_ENABLED = False
+    print(f"⚠️ Error: All pytgcalls imports failed: {e}")
 
 # ENV VARS
 API_ID = int(os.getenv("API_ID", "0"))
@@ -29,7 +41,8 @@ def make_client():
     return Client("axl_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
 app = make_client()
-pytg = PyTgCalls(app) if VOICE_CHAT_ENABLED else None
+if VOICE_CHAT_ENABLED:
+    pytg = PyTgCalls(app)
 
 def download_audio(query: str):
     ydl_opts = {"format": "bestaudio/best", "outtmpl": "/tmp/axl_%(id)s.%(ext)s", "quiet": True, "noplaylist": True}
@@ -45,20 +58,26 @@ async def player_loop(chat_id: int):
         while QUEUE.get(chat_id):
             item = QUEUE[chat_id][0]
             try:
-                # V2 Playing Method
-                await pytg.join_group_call(chat_id, AudioPiped(item["path"]))
+                # Universal Play Method
+                if hasattr(pytg, 'join_group_call'):
+                    await pytg.join_group_call(chat_id, StreamType(item["path"]))
+                else:
+                    await pytg.play(chat_id, StreamType(item["path"]))
             except Exception as e:
                 print(f"❌ Play Error: {e}")
                 break
             await asyncio.sleep(item.get("duration", 5))
             QUEUE[chat_id].pop(0)
-        try: await pytg.leave_group_call(chat_id)
+        try: 
+            if hasattr(pytg, 'leave_group_call'): await pytg.leave_group_call(chat_id)
+            else: await pytg.leave_call(chat_id)
         except: pass
         QUEUE.pop(chat_id, None)
     except Exception as e: print(f"Loop Error: {e}")
 
 @app.on_message(filters.command("play", PREFIX))
 async def cmd_play(_, message: Message):
+    if not VOICE_CHAT_ENABLED: return await message.reply_text("❌ Voice Chat library missing!")
     if len(message.command) < 2: return await message.reply_text("ℹ️ Usage: `!play Song Name`")
     m = await message.reply_text("🔎 **Searching...**")
     try:
@@ -74,7 +93,7 @@ async def cmd_play(_, message: Message):
 
 @app.on_message(filters.command("ping", PREFIX))
 async def cmd_ping(_, message: Message):
-    await message.reply_text("⚡️ **AXL MUSIC BOT is Alive (Baryon Mode)!**")
+    await message.reply_text("⚡️ **AXL MUSIC BOT is Alive and Resilient!**")
 
 async def main():
     await app.start()
@@ -83,7 +102,7 @@ async def main():
         async for dialog in app.get_dialogs(limit=20): pass
     except: pass
     if VOICE_CHAT_ENABLED: await pytg.start()
-    print("🚀 AXL MUSIC BOT RUNNING (V2 STABLE)...")
+    print("🚀 AXL MUSIC BOT RUNNING...")
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
